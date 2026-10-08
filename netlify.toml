@@ -1,0 +1,52 @@
+# Netlify config: plain static site, no build step.
+[build]
+  publish = "."
+  command = ""
+
+# ---------- Security ----------
+# connect-src: the page reads the published Google Sheet (CSV redirects to googleusercontent).
+# img-src: sheet images come from Google plus any https link a sheet row points at.
+# style-src 'unsafe-inline': Leaflet and the pins/clusters use inline style attributes.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob:; font-src 'self'; connect-src 'self' https://docs.google.com https://*.googleusercontent.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+
+# ---------- Caching ----------
+# Map tiles never change between deploys of the same tile set; cache for 30 days.
+[[headers]]
+  for = "/tiles/*"
+  [headers.values]
+    Cache-Control = "public, max-age=2592000"
+
+[[headers]]
+  for = "/assets/fonts/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Snapshot images keep their file names when the snapshot is refreshed, so cache briefly.
+[[headers]]
+  for = "/assets/locations/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"
+
+[[headers]]
+  for = "/vendor/*"
+  [headers.values]
+    Cache-Control = "public, max-age=2592000"
+
+# ---------- Keep repo-only files off the public site ----------
+[[redirects]]
+  from = "/scripts/*"
+  to = "/404"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/claude.md"
+  to = "/404"
+  status = 404
+  force = true

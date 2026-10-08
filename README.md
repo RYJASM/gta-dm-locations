@@ -41,7 +41,17 @@ Category colours come from the first part of the **Category** column (`House/…
 
 ## Hosting
 
-It's a static site. Push the folder to GitHub Pages, Netlify or any web host, and it will load the live sheet the same way `start.bat` does.
+It's a static site, so any host works. Hosted copies read the live sheet the same way `start.bat` does.
+
+### Netlify
+
+`netlify.toml` holds all the settings: no build step, publish the repo root, cache headers for tiles and fonts, a Content Security Policy, and 404s for repo-only files (`scripts/`, `claude.md`).
+
+1. In Netlify, choose **Add new site → Import an existing project → GitHub**, then pick `RYJASM/gta-dm-locations`.
+2. Leave the build settings as Netlify fills them in from `netlify.toml`, and click **Deploy**.
+3. Every `git push` to `main` redeploys automatically. Rename the site under **Site configuration → Change site name**.
+
+If a sheet row links an image from a new host, it loads fine, because the policy allows any `https:` image. If the page ever needs to fetch from a domain other than Google, add that domain to `connect-src` in `netlify.toml`.
 
 ## Credits
 
