@@ -31,8 +31,11 @@ You only need the snapshot for opening from disk or when Google is unreachable. 
 
 ## Sheet format notes
 
-The parser (`js/sheet-parser.js`) reads the sheet's published HTML instead of the CSV, because CSV drops the in-cell images and the URLs behind the "link" cells. It handles:
+The map reads the original sheet straight from its share link. The sheet ID and tab (`SHEET_ID`, `GID`) are at the top of `js/sheet-parser.js`. The only requirement is that the sheet stays shared as **"Anyone with the link can view"**. It doesn't need to be published to the web.
 
+The parser reads the sheet's read-only HTML view rather than its CSV, because CSV drops the in-cell images and the URLs behind the "link" cells. It handles:
+
+- Note rows above the table. The header row is found by its column names (DLC, Category, Coordinates…), so rows above it are skipped, including merged cells. More can be added later.
 - Coordinates as `x, y, z`, `X: … Y: … Z: …`, one coordinate set per line, `or` between alternatives, and text around the numbers (which becomes that location's label).
 - Rows without coordinates (e.g. "the red circles"). These are listed in the directory and open as a card without a pin.
 - Rows with only X/Y. These are pinned, and the card warns that there's no Z.

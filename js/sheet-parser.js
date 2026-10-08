@@ -1,21 +1,27 @@
 /*
- * Parses the published Google Sheet into location entries.
+ * Parses the DM teleport Google Sheet into location entries.
  *
  * Works in the browser (window.SheetParser) and in Node (require), so the page
  * and scripts/update-snapshot.mjs share exactly the same parsing rules.
  *
- * The sheet's "pubhtml" view is preferred over CSV because CSV drops the
- * hyperlinks behind the "link" cells and the images embedded in cells.
+ * Reads the sheet's read-only HTML view rather than CSV because CSV drops the
+ * hyperlinks behind the "link" cells and the images embedded in cells. That
+ * view only needs the sheet shared as "anyone with the link can view" — it
+ * doesn't have to be published to the web.
+ *
+ * The table doesn't have to start on row 1: the header row is found by its
+ * column names, so note rows (merged cells and all) above it are skipped.
  */
 (function (root) {
   'use strict';
 
-  const SHEET_KEY = '2PACX-1vS40YANfEtEm4z79xG7nDhNu0bGJqj0_kCebK6mf5Lu37gN54vXmvr857T45WP_ppvJfWUl_h0MKXaQ';
-  const SHEET_BASE = `https://docs.google.com/spreadsheets/d/e/${SHEET_KEY}`;
+  const SHEET_ID = '1JBfP-mzsiPdxtAHSDMXLXI05YuIvA-MgtvTHcMQP62k';
+  const GID = '0'; // which tab
+  const SHEET_BASE = `https://docs.google.com/spreadsheets/d/${SHEET_ID}`;
   const URLS = {
-    html: `${SHEET_BASE}/pubhtml/sheet?headers=false&gid=0`,
-    csv: `${SHEET_BASE}/pub?output=csv`,
-    view: `${SHEET_BASE}/pubhtml`,
+    html: `${SHEET_BASE}/htmlview/sheet?headers=false&gid=${GID}`,
+    csv: `${SHEET_BASE}/export?format=csv&gid=${GID}`,
+    view: `${SHEET_BASE}/edit?gid=${GID}#gid=${GID}`,
   };
 
   // Header text (lowercased, partial match) -> field name
@@ -68,13 +74,41 @@
     return { text: stripTags(html), links: unique(links), images };
   }
 
+  const emptyCell = () => ({ text: '', links: [], images: [] });
+
+  // Returns one array of cells per sheet row, with merged cells expanded so every
+  // row lines up column-for-column. Each row carries its real sheet row number.
   function parseSheetHtml(html) {
     const rows = [];
+    const carry = []; // column -> { cell, left } for cells merged downwards (rowspan)
     for (const tr of html.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)) {
-      const cells = [...tr[1].matchAll(/<td\b([^>]*)>([\s\S]*?)<\/td>/gi)]
-        .filter((m) => !/freezebar-cell/.test(m[1]))
-        .map((m) => parseCell(m[2]));
-      if (cells.length) rows.push(cells);
+      const id = tr[1].match(/<th\b[^>]*\bid="\d+R(\d+)"/); // 0-based row index
+      if (!id) continue; // header/frozen-divider rows aren't sheet rows
+      const cells = [];
+      let col = 0;
+      const fillCarried = () => {
+        while (carry[col]?.left > 0) {
+          cells[col] = carry[col].cell;
+          carry[col].left--;
+          col++;
+        }
+      };
+      for (const m of tr[1].matchAll(/<td\b([^>]*)>([\s\S]*?)<\/td>/gi)) {
+        if (/freezebar-cell/.test(m[1])) continue;
+        fillCarried();
+        const colspan = Number(m[1].match(/colspan="(\d+)"/)?.[1] || 1);
+        const rowspan = Number(m[1].match(/rowspan="(\d+)"/)?.[1] || 1);
+        const cell = parseCell(m[2]);
+        for (let k = 0; k < colspan; k++) {
+          cells[col + k] = k === 0 ? cell : emptyCell();
+          if (rowspan > 1) carry[col + k] = { cell: cells[col + k], left: rowspan - 1 };
+        }
+        col += colspan;
+      }
+      fillCarried();
+      const row = Array.from(cells, (c) => c || emptyCell());
+      row.num = Number(id[1]) + 1;
+      rows.push(row);
     }
     return rows;
   }
@@ -98,9 +132,11 @@
       } else field += c;
     }
     if (field || row.length) { row.push(field); rows.push(row); }
-    return rows.map((r) =>
-      r.map((t) => ({ text: t.trim(), links: unique(t.match(/https?:\/\/\S+/g) || []), images: [] }))
-    );
+    return rows.map((r, i) => {
+      const cells = r.map((t) => ({ text: t.trim(), links: unique(t.match(/https?:\/\/\S+/g) || []), images: [] }));
+      cells.num = i + 1; // quoted line breaks stay inside a field, so CSV rows = sheet rows
+      return cells;
+    });
   }
 
   /* ---------- Field interpretation ---------- */
@@ -189,18 +225,38 @@
 
   /* ---------- Rows -> entries ---------- */
 
-  function rowsToEntries(rows) {
-    const headerIndex = rows.findIndex((r) => r.some((c) => /coord/i.test(c.text)));
-    if (headerIndex < 0) throw new Error('Could not find the header row in the sheet');
-    const header = rows[headerIndex].map((c) => c.text.toLowerCase());
-    const col = {};
-    header.forEach((h, i) => {
-      const hit = COLUMNS.find(([needle, field]) => h.includes(needle) && !(field in col));
-      if (hit) col[hit[1]] = i;
+  // Which field a header cell names, if any. Header cells are short labels, so
+  // long note text that happens to mention "coordinates" doesn't count.
+  function headerField(text) {
+    const t = text.trim().toLowerCase();
+    if (!t || t.length > 40) return null;
+    return COLUMNS.find(([needle]) => t.includes(needle))?.[1] || null;
+  }
+
+  // The header is the row (among the first 50) naming the most known columns.
+  function findHeaderRow(rows) {
+    let best = -1;
+    let bestScore = 2; // need at least 3 recognised column names
+    rows.slice(0, 50).forEach((row, i) => {
+      const score = new Set(row.map((c) => headerField(c.text)).filter(Boolean)).size;
+      if (score > bestScore) { best = i; bestScore = score; }
     });
+    return best;
+  }
+
+  function rowsToEntries(rows) {
+    const headerIndex = findHeaderRow(rows);
+    if (headerIndex < 0) throw new Error('Could not find the header row (DLC, Category, Coordinates…) in the sheet');
+    const col = {};
+    rows[headerIndex].forEach((c, i) => {
+      const field = headerField(c.text);
+      if (field && !(field in col)) col[field] = i;
+    });
+    if (!('coords' in col)) throw new Error('The sheet has no Coordinates column');
 
     const entries = [];
     rows.slice(headerIndex + 1).forEach((row, i) => {
+      const rowNum = row.num || headerIndex + i + 2;
       const get = (field) => row[col[field]] || { text: '', links: [], images: [] };
       if (!row.some((c) => c.text || c.images.length)) return;
 
@@ -214,8 +270,8 @@
 
       const category = get('category').text;
       entries.push({
-        id: `row${headerIndex + i + 2}`,
-        row: headerIndex + i + 2,
+        id: `row${rowNum}`,
+        row: rowNum,
         dlc: get('dlc').text,
         release: get('release').text,
         category,
