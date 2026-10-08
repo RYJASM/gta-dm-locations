@@ -1,6 +1,6 @@
 # DM Teleport Map
 
-An interactive GTA V map of the locations in the DM teleport Google Sheet. Click a pin to copy its coordinates and see the location's picture, notes and links.
+An interactive GTA V map of the locations in the DM teleport Google Sheet. Click a pin to see the location's picture, notes and links, then hit **Copy** to grab its coordinates.
 
 ## Running it
 
@@ -11,9 +11,9 @@ An interactive GTA V map of the locations in the DM teleport Google Sheet. Click
 
 ## Using it
 
-- **Click a pin** to copy its coordinates and open its card: the image, category, DLC, notes, a "Confirmed on NoPixel" badge, and video or proof links.
+- **Click a pin** (or a directory entry) to open its card: the image, category, DLC, notes, a "Confirmed on NoPixel" badge, and video or proof links. Nothing is copied until you press a coordinate's **Copy** button.
 - **Click the image** to view it full screen. Use the arrow keys when a row has more than one image.
-- **Rows with several locations** (e.g. the four office towers) get one pin each. The card lists every location, and clicking one copies it and jumps there.
+- **Rows with several locations** (e.g. the four office towers) get one pin each. The card lists every location with its own **Copy** button. Clicking another location's coordinates jumps to that pin.
 - **Directory:** press `/` to search by name, DLC, category, notes or coordinates. You can also filter by category chip or show only locations confirmed on NoPixel. Press Enter to open the first result.
 - **Copy as:** choose `x, y, z`, `x y z`, `vector3(x, y, z)` or JSON. Your choice is remembered.
 - **Hover the map** to see the game X/Y under your cursor. **Right-click** to copy that X/Y. There's no Z, so you'll need to adjust height in-game.

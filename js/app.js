@@ -207,15 +207,12 @@
         });
         marker.bindPopup(() => buildCard(entry, i, 'popup'), {
           className: 'loc-popup',
-          maxWidth: 360,
+          maxWidth: 380,
           minWidth: 200,
           autoPanPaddingTopLeft: [16, 16],
           autoPanPaddingBottomRight: [16, 16],
         });
-        marker.on('click', () => {
-          copyPoint(entry, i);
-          setActive(entry.id, i);
-        });
+        marker.on('click', () => setActive(entry.id, i));
         marker.on('popupclose', () => {
           if (state.active && state.active.id === entry.id && state.active.i === i) setActive(null);
         });
@@ -282,10 +279,9 @@
     else map.setView(ll, target, { animate: true });
   }
 
-  function openPoint(entry, i, { copy = true, fly = false } = {}) {
+  function openPoint(entry, i, { fly = false } = {}) {
     const marker = state.markers.get(`${entry.id}:${i}`);
     if (!marker) return;
-    if (copy) copyPoint(entry, i);
     revealMarker(marker, fly ? 6 : 0, () => {
       marker.openPopup();
       setActive(entry.id, i);
@@ -418,37 +414,46 @@
       ? h(
           'div',
           { class: 'coords' },
-          entry.points.map((p, i) =>
-            h(
-              'button',
-              {
-                class: `coord${i === activeIndex ? ' is-active' : ''}`,
+          entry.points.map((p, i) => {
+            // In a popup, the other locations of a multi-location row jump to that pin (no copy)
+            const canJump = where === 'popup' && i !== activeIndex;
+            const text = [
+              entry.points.length > 1 || p.label
+                ? h('span', { class: 'coord-label' },
+                    entry.points.length > 1 ? `Location ${i + 1} of ${entry.points.length}` : '',
+                    entry.points.length > 1 && p.label ? ' · ' : '',
+                    p.label || '')
+                : null,
+              h('code', null, formatPoint(p)),
+              p.z == null ? h('span', { class: 'coord-warn' }, 'No Z in the sheet — you may need to adjust height') : null,
+            ];
+            const row = h(
+              'div',
+              { class: `coord${i === activeIndex ? ' is-active' : ''}` },
+              canJump
+                ? h('button', {
+                    class: 'coord-text coord-go',
+                    type: 'button',
+                    title: 'Show this location on the map',
+                    onclick: () => {
+                      map.closePopup();
+                      openPoint(entry, i);
+                    },
+                  }, text)
+                : h('span', { class: 'coord-text' }, text),
+              h('button', {
+                class: 'coord-copy',
                 type: 'button',
-                title: 'Copy coordinates',
-                onclick: (e) => {
+                title: `Copy as ${FORMATS[state.format].label}`,
+                'aria-label': `Copy coordinates ${formatPoint(p)}`,
+                onclick: () => {
                   copyPoint(entry, i);
-                  flashCopied(e.currentTarget);
-                  if (where === 'popup' && i !== activeIndex) {
-                    map.closePopup();
-                    openPoint(entry, i, { copy: false });
-                  }
+                  flashCopied(row);
                 },
-              },
-              h(
-                'span',
-                { class: 'coord-text' },
-                entry.points.length > 1 || p.label
-                  ? h('span', { class: 'coord-label' },
-                      entry.points.length > 1 ? `Location ${i + 1} of ${entry.points.length}` : '',
-                      entry.points.length > 1 && p.label ? ' · ' : '',
-                      p.label || '')
-                  : null,
-                h('code', null, formatPoint(p)),
-                p.z == null ? h('span', { class: 'coord-warn' }, 'No Z in the sheet — you may need to adjust height') : null
-              ),
-              h('span', { class: 'coord-copy' }, icon('copy'), icon('check'))
-            )
-          )
+              }, h('span', { class: 'coord-copy-icons' }, icon('copy'), icon('check')), h('span', { class: 'coord-copy-label' }, 'Copy'))
+            );
+            return row;
+          })
         )
       : h('p', { class: 'coord-missing' }, 'No exact coordinates in the sheet for this one.');
 
@@ -479,7 +484,7 @@
         h('h2', { class: 'card-title' }, entry.title),
         h('p', { class: 'card-dlc' }, entry.dlc || 'Base game / story mode', entry.release ? h('span', null, ` · ${entry.release}`) : null),
         coords,
-        entry.points.length ? h('p', { class: 'card-hint' }, `Click a coordinate to copy it as ${FORMATS[state.format].label}`) : null,
+        entry.points.length ? h('p', { class: 'card-hint' }, copyHint()) : null,
         showNotes && h('p', { class: 'card-notes' }, linkify(entry.notes)),
         entry.coordsNote && h('p', { class: 'card-subnote' }, linkify(entry.coordsNote)),
         confirmedExtra && h('p', { class: 'card-subnote' }, h('strong', null, 'NoPixel: '), linkify(entry.confirmed.text)),
@@ -492,9 +497,19 @@
     );
   }
 
-  function flashCopied(btn) {
-    btn.classList.add('is-copied');
-    setTimeout(() => btn.classList.remove('is-copied'), 1400);
+  function copyHint() {
+    return `Copies as ${FORMATS[state.format].label} · change format under "Copy as"`;
+  }
+
+  function flashCopied(row) {
+    const label = row.querySelector('.coord-copy-label');
+    row.classList.add('is-copied');
+    if (label) label.textContent = 'Copied';
+    clearTimeout(row._copiedTimer);
+    row._copiedTimer = setTimeout(() => {
+      row.classList.remove('is-copied');
+      if (label) label.textContent = 'Copy';
+    }, 1400);
   }
 
   /* ================= Modal (entries without coordinates) ================= */
@@ -755,7 +770,7 @@
     contentBounds = all.length ? L.latLngBounds(TILE_BOUNDS.getSouthWest(), TILE_BOUNDS.getNorthEast()).extend(L.latLngBounds(all)) : TILE_BOUNDS;
     updateMaxBounds();
     render();
-    if (reopen && state.byId.has(reopen.id)) openPoint(state.byId.get(reopen.id), reopen.i, { copy: false });
+    if (reopen && state.byId.has(reopen.id)) openPoint(state.byId.get(reopen.id), reopen.i);
   }
 
   function snapshotKey(e) {
@@ -822,7 +837,7 @@
     const entry = m && state.byId.get(m[1]);
     if (!entry) return;
     const i = Math.min(Number(m[2] || 1) - 1, Math.max(entry.points.length - 1, 0));
-    entry.points.length ? openPoint(entry, i, { copy: false, fly: true }) : openModal(entry);
+    entry.points.length ? openPoint(entry, i, { fly: true }) : openModal(entry);
   }
 
   /* ================= Controls ================= */
@@ -831,7 +846,8 @@
   els.format.addEventListener('change', () => {
     state.format = els.format.value;
     store.set('format', state.format);
-    for (const el of document.querySelectorAll('.card-hint')) el.textContent = `Click a coordinate to copy it as ${FORMATS[state.format].label}`;
+    for (const el of document.querySelectorAll('.card-hint')) el.textContent = copyHint();
+    for (const el of document.querySelectorAll('.coord-copy')) el.title = `Copy as ${FORMATS[state.format].label}`;
   });
 
   let searchTimer;
