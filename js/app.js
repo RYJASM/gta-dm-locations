@@ -40,6 +40,7 @@
     }
     return found.length ? found : [OTHER];
   }
+  const groupFor = (category) => GROUPS.find((g) => g.match.test(category)) || OTHER;
 
   const STATUS = {
     yes: 'Confirmed on NoPixel',
@@ -585,7 +586,10 @@
         h(
           'div',
           { class: 'card-tags' },
-          h('span', { class: 'tag' }, h('span', { class: 'tag-dot' }), entry.category || g.label),
+          // One tag per comma-separated category, each in its own group's colour
+          (entry.categories?.length ? entry.categories : [entry.category || g.label]).map((c) =>
+            h('span', { class: 'tag', style: `--c:${groupFor(c).color}` }, h('span', { class: 'tag-dot' }), c)
+          ),
           entry.confirmed.status && h('span', { class: `status status--${entry.confirmed.status}` }, STATUS[entry.confirmed.status])
         ),
         h('h2', { class: 'card-title' }, entry.title),
