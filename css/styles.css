@@ -72,7 +72,10 @@ a { color: var(--accent); }
 .brand-mark { width: 36px; height: 36px; flex: none; }
 .brand h1 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
 .brand p { margin: 1px 0 0; color: var(--muted); font-size: 12.5px; }
-.drawer-close { margin-left: auto; display: none; }
+/* Closes the phone drawer; hidden on desktop. Needs .icon-btn in the selector to
+   beat that rule's display, which comes later in the file. */
+.icon-btn.drawer-close { margin-left: auto; display: none; }
+.drawer-close svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 
 .controls { display: grid; gap: 12px; padding: 0 18px 14px; border-bottom: 1px solid var(--line); }
 
@@ -614,7 +617,7 @@ dialog::backdrop { background: rgba(3, 4, 6, .78); backdrop-filter: blur(3px); }
     z-index: 1100; /* above Leaflet's controls (1000) */
   }
   body.drawer-open .sidebar { transform: none; }
-  .drawer-close { display: inline-grid; }
+  .icon-btn.drawer-close { display: inline-grid; }
   .brand { padding: 14px 16px 12px; }
   .controls { padding: 0 16px 12px; }
   .drawer-btn {
