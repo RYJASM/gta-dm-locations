@@ -35,6 +35,8 @@ The map reads the original sheet straight from its share link. The sheet ID and 
 
 The parser reads the sheet's read-only HTML view rather than its CSV, because CSV drops the in-cell images and the URLs behind the "link" cells. It handles:
 
+- **Name** is the card and directory title. Rows without a name fall back to the first line of **Notes**, and Notes shows as the description.
+- **Image, Image 2 … Image 5** make up the photo slideshow, in that order, with empty cells skipped. Images placed *over* one of those columns join it too. Images placed over other columns (e.g. Notes) show inline under the notes. **Image link** is shown as an "Image source" link, not a slide.
 - Note rows above the table. The header row is found by its column names (DLC, Category, Coordinates…), so rows above it are skipped, including merged cells. More can be added later.
 - Coordinates as `x, y, z`, `X: … Y: … Z: …`, one coordinate set per line, `or` between alternatives, and text around the numbers (which becomes that location's label).
 - Rows without coordinates (e.g. "the red circles"). These are listed in the directory and open as a card without a pin.

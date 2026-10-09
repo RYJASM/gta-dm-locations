@@ -29,7 +29,8 @@
     ['confirmed', 'confirmed'],
     ['image link', 'imageLink'],
     ['video', 'videoLink'],
-    ['image', 'image'],
+    ['image', 'image'], // also matches "Image 2" … "Image 5"
+    ['name', 'name'],
     ['dlc', 'dlc'],
     ['release', 'release'],
     ['category', 'category'],
@@ -271,8 +272,10 @@
     const headerIndex = findHeaderRow(rows);
     if (headerIndex < 0) throw new Error('Could not find the header row (DLC, Category, Coordinates…) in the sheet');
     const col = {};
+    const imageCols = []; // "Image", "Image 2" … "Image 5" — all feed the slideshow, in order
     rows[headerIndex].forEach((c, i) => {
       const field = headerField(c.text);
+      if (field === 'image') imageCols.push(i);
       if (field && !(field in col)) col[field] = i;
     });
     if (!('coords' in col)) throw new Error('The sheet has no Coordinates column');
@@ -288,16 +291,16 @@
       const imageLinks = get('imageLink').links;
       const parsed = parseCoordinates(coords.text);
 
-      // Slideshow photos come only from the Image column; "Image link" holds where a
+      // Slideshow photos come only from the Image columns; "Image link" holds where a
       // photo came from, so it stays a link in the card rather than a slide.
-      const images = get('image').images.map(imageFromUrl);
+      const images = imageCols.flatMap((c) => (row[c]?.images || []).map(imageFromUrl));
 
-      // Floating images over the Image column join the photos; anywhere else they
+      // Floating images over an Image column join the photos; anywhere else they
       // illustrate the notes (e.g. "…press this button:") and are shown inline there.
       const floating = row.floating || [];
       const sized = (f) => ({ ...imageFromUrl(f.src), width: f.width, height: f.height });
-      for (const f of floating) if (f.col === col.image) images.push(imageFromUrl(f.src));
-      const noteImages = floating.filter((f) => f.col !== col.image).map(sized);
+      for (const f of floating) if (imageCols.includes(f.col)) images.push(imageFromUrl(f.src));
+      const noteImages = floating.filter((f) => !imageCols.includes(f.col)).map(sized);
 
       const category = get('category').text;
       entries.push({
@@ -306,7 +309,8 @@
         dlc: get('dlc').text,
         release: get('release').text,
         category,
-        title: deriveTitle(notes.text, category),
+        // The Name column is the title; rows not yet named fall back to the notes' first line
+        title: get('name').text.replace(/\s+/g, ' ') || deriveTitle(notes.text, category),
         notes: notes.text,
         links: unique([...notes.links, ...coords.links]),
         coordsText: coords.text,
