@@ -464,7 +464,7 @@
 
     const links = [
       ...entry.videoLinks.map((u) => ({ url: u, ...linkKind(u), label: /twitch|youtu/.test(u) ? linkKind(u).label : 'Video' })),
-      ...entry.imageLinks.map((u) => ({ url: u, label: 'Image source', ico: 'image' })),
+      ...entry.imageLinks.map((u, i, all) => ({ url: u, label: all.length > 1 ? `Image source ${i + 1}` : 'Image source', ico: 'image' })),
       ...entry.confirmed.links.map((u) => ({ url: u, ...linkKind(u), label: `Proof · ${linkKind(u).label}` })),
     ];
     const seen = new Set();

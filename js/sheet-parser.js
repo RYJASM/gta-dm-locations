@@ -37,8 +37,6 @@
     ['coord', 'coords'],
   ];
 
-  const IMAGE_EXT = /\.(jpe?g|png|webp|gif)(\?|$)/i;
-
   /* ---------- HTML helpers ---------- */
 
   function decodeEntities(s) {
@@ -290,8 +288,9 @@
       const imageLinks = get('imageLink').links;
       const parsed = parseCoordinates(coords.text);
 
+      // Slideshow photos come only from the Image column; "Image link" holds where a
+      // photo came from, so it stays a link in the card rather than a slide.
       const images = get('image').images.map(imageFromUrl);
-      for (const url of imageLinks) if (IMAGE_EXT.test(url)) images.push(imageFromUrl(url));
 
       // Floating images over the Image column join the photos; anywhere else they
       // illustrate the notes (e.g. "…press this button:") and are shown inline there.
@@ -315,7 +314,7 @@
         points: parsed.points,
         images: uniqueBy(images, (im) => im.full),
         noteImages: uniqueBy(noteImages, (im) => im.full),
-        imageLinks: imageLinks.filter((u) => !IMAGE_EXT.test(u)),
+        imageLinks,
         videoLinks: get('videoLink').links,
         confirmed: {
           status: confirmedStatus(get('confirmed').text),
