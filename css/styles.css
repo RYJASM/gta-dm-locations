@@ -57,7 +57,7 @@ a { color: var(--accent); }
 /* ---------- Layout ---------- */
 .app { display: grid; grid-template-columns: var(--sidebar) 1fr; height: 100dvh; }
 .map-wrap { position: relative; min-width: 0; }
-#map { position: absolute; inset: 0; background: #000; }
+#map { position: absolute; inset: 0; background: #000b16; }
 
 /* ---------- Sidebar ---------- */
 .sidebar {
