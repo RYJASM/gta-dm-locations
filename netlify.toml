@@ -6,11 +6,12 @@
 # ---------- Security ----------
 # connect-src: the page reads the published Google Sheet (CSV redirects to googleusercontent).
 # img-src: sheet images come from Google plus any https link a sheet row points at.
+# frame-src: the click-to-play YouTube (no-cookie) and Twitch players in the slideshow.
 # style-src 'unsafe-inline': Leaflet and the pins/clusters use inline style attributes.
 [[headers]]
   for = "/*"
   [headers.values]
-    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob:; font-src 'self'; connect-src 'self' https://docs.google.com https://*.googleusercontent.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob:; font-src 'self'; connect-src 'self' https://docs.google.com https://*.googleusercontent.com; frame-src https://www.youtube-nocookie.com https://player.twitch.tv; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"

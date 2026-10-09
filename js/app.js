@@ -386,45 +386,128 @@
     return axes(p).join(', ');
   }
 
+  /* ---------- Video embeds ---------- */
+  // "90", "1m30s" or "06h53m06s" -> seconds
+  function parseTime(t) {
+    if (!t) return 0;
+    if (/^\d+$/.test(t)) return Number(t);
+    const m = t.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/i);
+    return m ? (Number(m[1]) || 0) * 3600 + (Number(m[2]) || 0) * 60 + (Number(m[3]) || 0) : 0;
+  }
+
+  // Turns a YouTube or Twitch VOD link into an embeddable player, or null.
+  // Both players refuse to run inside a page opened from disk (file://).
+  function videoEmbed(url) {
+    if (!/^https?:$/.test(location.protocol)) return null;
+    let u;
+    try { u = new URL(url); } catch { return null; }
+    const host = u.hostname.replace(/^(www|m)\./, '');
+    if (host === 'youtu.be' || host === 'youtube.com' || host === 'youtube-nocookie.com') {
+      const id = host === 'youtu.be'
+        ? u.pathname.slice(1).split('/')[0]
+        : u.searchParams.get('v') || u.pathname.match(/^\/(?:embed|shorts|live)\/([\w-]+)/)?.[1];
+      if (!/^[\w-]{11}$/.test(id || '')) return null;
+      const start = parseTime(u.searchParams.get('t') || u.searchParams.get('start'));
+      return {
+        kind: 'YouTube',
+        thumb: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+        src: `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&rel=0${start ? `&start=${start}` : ''}`,
+      };
+    }
+    if (host === 'twitch.tv') {
+      const id = u.pathname.match(/^\/videos\/(\d+)/)?.[1];
+      if (!id) return null;
+      const t = u.searchParams.get('t');
+      return {
+        kind: 'Twitch',
+        thumb: null, // Twitch has no public thumbnail URL; the location's photo stands in
+        src: `https://player.twitch.tv/?video=v${id}&parent=${location.hostname}&autoplay=true${t ? `&time=${encodeURIComponent(t)}` : ''}`,
+      };
+    }
+    return null;
+  }
+
+  /* ---------- Slideshow: videos first, then photos ---------- */
+  function buildMedia(entry) {
+    const slides = [
+      ...entry.videoLinks.map(videoEmbed).filter(Boolean).map((video) => ({ video })),
+      ...entry.images.map((im, i) => ({ im, i })),
+    ];
+    if (!slides.length) return h('div', { class: 'media media-empty' }, icon('image'), h('span', null, 'No image in the sheet yet'));
+
+    let at = 0;
+    const stage = h('div', { class: 'media-stage' });
+    const counter = h('span', { class: 'media-count' });
+    const media = h('div', { class: 'media' }, stage);
+
+    const photo = ({ im, i }) => {
+      const img = image(im, { alt: entry.title, decoding: 'async' });
+      img.addEventListener('error', () => {
+        if (im.local && !img.src.endsWith(im.local)) useLocal(img, im.local);
+        else media.classList.add('is-broken');
+      });
+      img.addEventListener('load', () => media.classList.remove('is-broken'));
+      return h('button', { class: 'media-open', type: 'button', 'aria-label': 'View image full size', onclick: () => openLightbox(entry, i) },
+        img,
+        h('span', { class: 'media-zoom' }, icon('expand'))
+      );
+    };
+
+    // A thumbnail + play button; the player itself only loads on click, so opening
+    // a card stays fast and nothing from YouTube/Twitch loads until asked for
+    const videoPoster = ({ video }) => {
+      const poster = video.thumb || entry.images[0]?.thumb;
+      return h('button', {
+        class: `media-play media-play--${video.kind.toLowerCase()}`,
+        type: 'button',
+        'aria-label': `Play ${video.kind} video`,
+        onclick: (e) => {
+          // This button is replaced mid-click; without this Leaflet sees a click on
+          // a detached element, treats it as a map click and closes the popup
+          e.stopPropagation();
+          media.classList.add('is-playing');
+          stage.replaceChildren(h('iframe', {
+            class: 'media-frame',
+            src: video.src,
+            title: `${entry.title} — ${video.kind} video`,
+            allow: 'autoplay; encrypted-media; picture-in-picture; fullscreen',
+            allowfullscreen: true,
+            referrerpolicy: 'strict-origin-when-cross-origin',
+          }));
+        },
+      },
+        poster ? image({ thumb: poster }, { alt: '', decoding: 'async' }) : null,
+        h('span', { class: 'media-play-btn' }, icon('play')),
+        h('span', { class: 'media-play-label' }, icon('play'), video.kind)
+      );
+    };
+
+    // Re-rendering the slide also removes any playing video, which stops it
+    const show = () => {
+      const s = slides[at];
+      media.classList.remove('is-playing', 'is-broken');
+      stage.replaceChildren(s.video ? videoPoster(s) : photo(s));
+      counter.textContent = `${at + 1} / ${slides.length}`;
+    };
+    const step = (d) => (e) => {
+      e.stopPropagation();
+      at = (at + d + slides.length) % slides.length;
+      show();
+    };
+    if (slides.length > 1) {
+      media.append(
+        h('button', { class: 'media-nav prev', type: 'button', 'aria-label': 'Previous slide', onclick: step(-1) }, icon('prev')),
+        h('button', { class: 'media-nav next', type: 'button', 'aria-label': 'Next slide', onclick: step(1) }, icon('next')),
+        counter
+      );
+    }
+    show();
+    return media;
+  }
+
   function buildCard(entry, activeIndex, where) {
     const g = entry.group;
-    let imgIndex = 0;
-
-    const media = entry.images.length
-      ? (() => {
-          const img = image(entry.images[0], { alt: entry.title, decoding: 'async' });
-          img.addEventListener('error', () => {
-            const local = entry.images[imgIndex].local;
-            if (local && !img.src.endsWith(local)) useLocal(img, local);
-            else media.classList.add('is-broken');
-          });
-          img.addEventListener('load', () => media.classList.remove('is-broken'));
-          const counter = h('span', { class: 'media-count' }, `1 / ${entry.images.length}`);
-          const step = (d) => (e) => {
-            e.stopPropagation();
-            imgIndex = (imgIndex + d + entry.images.length) % entry.images.length;
-            const src = entry.images[imgIndex].thumb;
-            if (needsCors(src)) img.crossOrigin = 'anonymous';
-            else img.removeAttribute('crossorigin');
-            img.src = src;
-            counter.textContent = `${imgIndex + 1} / ${entry.images.length}`;
-          };
-          const media = h(
-            'div',
-            { class: 'media' },
-            h('button', { class: 'media-open', type: 'button', 'aria-label': 'View image full size', onclick: () => openLightbox(entry, imgIndex) },
-              img,
-              h('span', { class: 'media-zoom' }, icon('expand'))
-            ),
-            entry.images.length > 1 && [
-              h('button', { class: 'media-nav prev', type: 'button', 'aria-label': 'Previous image', onclick: step(-1) }, icon('prev')),
-              h('button', { class: 'media-nav next', type: 'button', 'aria-label': 'Next image', onclick: step(1) }, icon('next')),
-              counter,
-            ]
-          );
-          return media;
-        })()
-      : h('div', { class: 'media media-empty' }, icon('image'), h('span', null, 'No image in the sheet yet'));
+    const media = buildMedia(entry);
 
     const coords = entry.points.length
       ? h(

@@ -12,6 +12,7 @@ An interactive GTA V map of the locations in the DM teleport Google Sheet. Click
 ## Using it
 
 - **Click a pin** (or a directory entry) to open its card: the image, category, DLC, notes, a "Confirmed on NoPixel" badge, and video or proof links. Nothing is copied until you press a coordinate's **Copy** button.
+- **Videos:** a YouTube or Twitch VOD in the **Video link** column becomes the card's first slide. The player only loads when you press play, starts at the link's timestamp if it has one, and stops when you change slides or close the card. Videos don't embed when the page is opened from disk, so they stay link buttons there.
 - **Click the image** to view it full screen. Use the arrow keys when a row has more than one image.
 - **Rows with several locations** (e.g. the four office towers) get one pin each. The card lists every location with its own **Copy** button. Clicking another location's coordinates jumps to that pin.
 - **Directory:** press `/` to search by name, DLC, category, notes or coordinates. You can also filter by category chip or show only locations confirmed on NoPixel. Press Enter to open the first result.

@@ -358,6 +358,48 @@ a { color: var(--accent); }
 .card .media { position: relative; aspect-ratio: 5 / 3; background: #000; }
 .media-open { display: block; width: 100%; height: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; }
 .media img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.media-stage { width: 100%; height: 100%; }
+
+/* Video slide: poster + play button until clicked, then the embedded player */
+.media-play { position: relative; display: block; width: 100%; height: 100%; padding: 0; border: 0; background: #000; overflow: hidden; }
+.media-play img { opacity: .72; transform: scale(1.08); transition: opacity .2s; } /* scale hides YouTube's letterbox bars */
+.media-play:hover img { opacity: .88; }
+.media-play--twitch { background: linear-gradient(135deg, #2a1b4a, #0d0b14); }
+.media-play-btn {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  margin: auto;
+  border: 2px solid rgba(255, 255, 255, .9);
+  border-radius: 50%;
+  background: rgba(8, 9, 12, .65);
+  color: #fff;
+  transition: background .15s, color .15s, transform .15s;
+}
+.media-play-btn .ico { width: 24px; height: 24px; margin-left: 3px; }
+.media-play-btn .ico svg { fill: currentColor; }
+.media-play:hover .media-play-btn { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); transform: scale(1.06); }
+.media-play-label {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px 3px 7px;
+  border-radius: 999px;
+  background: rgba(8, 9, 12, .75);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.media-play-label .ico { width: 11px; height: 11px; }
+.media-play-label .ico svg { fill: currentColor; }
+.media-frame { display: block; width: 100%; height: 100%; border: 0; background: #000; }
+.media.is-playing .media-count { display: none; } /* would cover the player's controls */
 .media.is-broken img { opacity: 0; }
 .media.is-broken::after { content: 'Image could not be loaded'; position: absolute; inset: 0; display: grid; place-items: center; color: var(--faint); font-size: 12.5px; }
 .media-zoom {
