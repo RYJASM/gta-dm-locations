@@ -57,6 +57,16 @@ It's a static site, so any host works. Hosted copies read the live sheet the sam
 2. Leave the build settings as Netlify fills them in from `netlify.toml`, and click **Deploy**.
 3. Every `git push` to `main` redeploys automatically. Rename the site under **Site configuration → Change site name**.
 
+#### Location requests (Netlify Forms)
+
+The **+ Request** button in the sidebar footer, and **Request this location** when a search finds nothing, open a form that is submitted to Netlify Forms as `location-request`. It has name, coordinates (checked with the map's own parser), categories, DLC, notes, video and image-source links, NoPixel status, up to 5 screenshots and the requester's name, Discord or email. Screenshots are shrunk in the browser to about 1920 px JPEG first, because Netlify caps a submission at roughly 8 MB. A hidden honeypot field filters most spam.
+
+1. After deploying, open **Forms** in Netlify. If `location-request` isn't listed, turn on **form detection** (Site configuration → Forms) and redeploy.
+2. Under **Forms → Form notifications**, add an email (or Slack/Discord webhook) notification so new requests reach you.
+3. Submissions, including the screenshots, appear in the Forms tab. Copy approved ones into the sheet.
+
+Requests can only be sent from the deployed site. `start.bat` and opening from disk show an error instead. Check your Netlify plan's monthly limits on form submissions and file uploads.
+
 If a sheet row links an image from a new host, it loads fine, because the policy allows any `https:` image. If the page ever needs to fetch from a domain other than Google, add that domain to `connect-src` in `netlify.toml`.
 
 ## Credits

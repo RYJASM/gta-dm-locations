@@ -47,7 +47,7 @@ body {
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
 }
-button, input, select { font: inherit; color: inherit; }
+button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 a { color: var(--accent); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -217,7 +217,31 @@ a { color: var(--accent); }
 
 .empty { display: grid; gap: 10px; justify-items: center; padding: 40px 16px; color: var(--muted); text-align: center; }
 .empty p { margin: 0; }
-.btn { height: 32px; padding: 0 14px; background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 8px; font-weight: 600; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 14px; background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 8px; font-weight: 600; }
+.btn:disabled { opacity: .6; cursor: progress; }
+.btn .ico { width: 15px; height: 15px; }
+.btn-quiet { background: var(--panel-2); color: var(--text); border: 1px solid var(--line-2); font-weight: 500; }
+.btn-quiet:hover { border-color: var(--accent); }
+.empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* "Request" button in the footer, beside the Google Sheet link */
+.request-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  flex: none;
+  padding: 0 10px 0 7px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+}
+.request-btn:hover { border-color: var(--accent); color: var(--accent); }
+.request-btn .ico { width: 14px; height: 14px; }
 
 .source {
   display: flex;
@@ -582,6 +606,84 @@ dialog::backdrop { background: rgba(3, 4, 6, .78); backdrop-filter: blur(3px); }
   border: 1px solid var(--line-2);
   border-radius: 16px;
   box-shadow: 0 24px 60px rgba(0, 0, 0, .6);
+}
+
+/* ---------- "Request a location" form ---------- */
+.modal.request { width: min(560px, calc(100vw - 32px)); overflow: hidden; }
+.request form { display: flex; flex-direction: column; max-height: calc(100dvh - 48px); }
+.request form[hidden] { display: none; }
+.request-head { display: flex; align-items: flex-start; gap: 12px; padding: 18px 20px 14px; border-bottom: 1px solid var(--line); }
+.request-head > div { flex: 1; }
+.request-head h2 { margin: 0; font-size: 17px; font-weight: 680; }
+.request-head p { margin: 3px 0 0; color: var(--muted); font-size: 13px; }
+.request-head .lb-btn { width: 32px; height: 32px; flex: none; }
+.request-body { display: grid; gap: 14px; padding: 16px 20px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
+.field { display: grid; gap: 5px; min-width: 0; font-size: 12.5px; }
+.field > span { color: var(--muted); font-weight: 500; }
+.field > span b { color: var(--accent); font-weight: 600; }
+.field > span small { color: var(--faint); font-weight: 400; }
+.field small { color: var(--faint); font-size: 11.5px; }
+.field input:not([type="file"]), .field textarea, .field select {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 13.5px;
+  transition: border-color .15s;
+}
+.field textarea { resize: vertical; min-height: 40px; line-height: 1.4; }
+#reqCoords { font-family: var(--font-code); font-size: 13px; }
+.field input::placeholder, .field textarea::placeholder { color: var(--faint); }
+.field input:focus, .field textarea:focus, .field select:focus { outline: none; border-color: var(--accent); }
+.field [aria-invalid="true"] { border-color: var(--bad); }
+.field-error { color: var(--bad); font-size: 12px; font-style: normal; }
+.field-row { display: grid; grid-template-columns: 1fr 1fr; align-items: start; gap: 12px; }
+
+.dropzone {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 64px;
+  padding: 12px;
+  background: var(--panel-2);
+  border: 1px dashed var(--line-2);
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.dropzone:hover, .dropzone.is-over { border-color: var(--accent); background: var(--panel-3); }
+.dropzone:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dropzone.is-full { display: none; }
+.dropzone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.dropzone svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.dropzone u { color: var(--accent); }
+.thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.thumbs:empty { display: none; }
+.thumbs li { position: relative; width: 84px; height: 56px; border-radius: 7px; overflow: hidden; border: 1px solid var(--line-2); }
+.thumbs img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.thumbs button { position: absolute; top: 3px; right: 3px; display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: rgba(8, 9, 12, .8); color: #fff; }
+.thumbs button:hover { color: var(--bad); }
+.thumbs .ico { width: 12px; height: 12px; }
+
+.request-foot { display: flex; align-items: center; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--line); }
+.request-status { flex: 1; min-width: 0; color: var(--muted); font-size: 12.5px; }
+.request-status.is-error { color: var(--bad); }
+
+.request-done { display: grid; justify-items: center; gap: 8px; padding: 36px 24px 28px; text-align: center; }
+.request-done[hidden] { display: none; }
+.request-done svg { width: 44px; height: 44px; fill: none; stroke: var(--ok); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.request-done h2 { margin: 4px 0 0; font-size: 18px; }
+.request-done p { margin: 0 0 10px; color: var(--muted); }
+.request-done div { display: flex; gap: 8px; }
+
+@media (max-width: 560px) {
+  .field-row { grid-template-columns: 1fr; }
 }
 .modal-close { position: absolute; top: 10px; right: 10px; z-index: 2; }
 

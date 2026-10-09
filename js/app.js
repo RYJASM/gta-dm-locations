@@ -338,6 +338,7 @@
     close: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
     refresh: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/></svg>',
     warn: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17.5v.01"/></svg>',
+    plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
   };
   const icon = (name) => {
     const span = document.createElement('span');
@@ -789,8 +790,11 @@
     if (!visible.length) {
       els.list.replaceChildren(
         h('div', { class: 'empty' },
-          h('p', null, 'No locations match your filters.'),
-          h('button', { class: 'btn', type: 'button', onclick: clearFilters }, 'Clear filters'))
+          h('p', null, state.query ? `Nothing matches “${els.search.value.trim()}”.` : 'No locations match your filters.'),
+          h('div', { class: 'empty-actions' },
+            h('button', { class: 'btn btn-quiet', type: 'button', onclick: clearFilters }, 'Clear filters'),
+            h('button', { class: 'btn', type: 'button', onclick: () => openRequest(els.search.value.trim()) },
+              icon('plus'), 'Request this location')))
       );
       return;
     }
@@ -880,7 +884,8 @@
         'aria-label': 'Reload from Google Sheet',
         onclick: loadLive,
       }, icon('refresh')),
-      h('a', { class: 'icon-btn', href: SheetParser.URLS.view, target: '_blank', rel: 'noopener noreferrer', title: 'Open the Google Sheet', 'aria-label': 'Open the Google Sheet' }, icon('link'))
+      h('a', { class: 'icon-btn', href: SheetParser.URLS.view, target: '_blank', rel: 'noopener noreferrer', title: 'Open the Google Sheet', 'aria-label': 'Open the Google Sheet' }, icon('link')),
+      h('button', { class: 'request-btn', type: 'button', title: 'Request a new location', onclick: () => openRequest() }, icon('plus'), 'Request')
     );
   }
 
@@ -986,6 +991,179 @@
     const i = Math.min(Number(n || 1) - 1, Math.max(entry.points.length - 1, 0));
     entry.points.length ? openPoint(entry, i, { fly: true }) : openModal(entry);
   }
+
+  /* ================= "Request a location" (Netlify Forms) ================= */
+  // The form is static HTML in index.html so Netlify registers it at deploy. Each
+  // screenshot goes in its own field (screenshot1-5): Netlify keeps one file per
+  // field. Screenshots are shrunk in the browser first — a submission is capped at
+  // roughly 8 MB, and screenshots are often several MB each as PNG.
+  const MAX_SHOTS = 5;
+  const MAX_UPLOAD_BYTES = 7.5 * 1024 * 1024;
+  const req = {
+    dialog: $('requestDialog'),
+    form: $('requestForm'),
+    done: $('requestDone'),
+    status: $('reqStatus'),
+    submit: $('reqSubmit'),
+    coords: $('reqCoords'),
+    coordsError: $('reqCoordsError'),
+    picker: $('reqImages'),
+    drop: $('reqDrop'),
+    thumbs: $('reqThumbs'),
+    shots: [], // { file, url }
+  };
+
+  function openRequest(name = '') {
+    // Suggestions from what the sheet already uses
+    const cats = new Set(state.entries.flatMap((e) => e.categories || []));
+    const dlcs = new Set(state.entries.map((e) => e.dlc).filter(Boolean));
+    $('reqCategories').replaceChildren(...[...cats].sort().map((c) => h('option', { value: c })));
+    $('reqDlcs').replaceChildren(...[...dlcs].map((d) => h('option', { value: d })));
+    if (!req.done.hidden) resetRequest();
+    if (name) req.form.elements.name.value = name;
+    setRequestStatus('');
+    req.dialog.showModal();
+    (name ? req.coords : req.form.elements.name).focus();
+  }
+
+  function resetRequest() {
+    req.form.reset();
+    for (const s of req.shots) URL.revokeObjectURL(s.url);
+    req.shots = [];
+    renderShots();
+    req.coordsError.hidden = true;
+    req.form.hidden = false;
+    req.done.hidden = true;
+    setRequestStatus('');
+  }
+
+  function setRequestStatus(text, isError) {
+    req.status.textContent = text;
+    req.status.classList.toggle('is-error', !!isError);
+  }
+
+  function addShots(files) {
+    const images = [...files].filter((f) => f.type.startsWith('image/'));
+    const room = MAX_SHOTS - req.shots.length;
+    for (const file of images.slice(0, room)) req.shots.push({ file, url: URL.createObjectURL(file) });
+    setRequestStatus(images.length > room ? `Only ${MAX_SHOTS} screenshots per request.` : '', images.length > room);
+    renderShots();
+  }
+
+  function renderShots() {
+    req.thumbs.replaceChildren(
+      ...req.shots.map((s, i) =>
+        h('li', null,
+          h('img', { src: s.url, alt: s.file.name }),
+          h('button', {
+            type: 'button',
+            'aria-label': `Remove ${s.file.name}`,
+            onclick: () => {
+              URL.revokeObjectURL(s.url);
+              req.shots.splice(i, 1);
+              renderShots();
+            },
+          }, icon('close')))
+      )
+    );
+    req.drop.classList.toggle('is-full', req.shots.length >= MAX_SHOTS);
+  }
+
+  // Downscale to <= 1920px and re-encode as JPEG; falls back to the original file
+  async function shrinkImage(file, max = 1920) {
+    if (file.type === 'image/gif') return file;
+    let bitmap;
+    try { bitmap = await createImageBitmap(file); } catch { return file; }
+    const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
+    if (scale === 1 && file.size < 1.5 * 1024 * 1024) return file;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+    if (!blob || blob.size >= file.size) return file;
+    return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' });
+  }
+
+  // Same rules the map uses to read the sheet, so an accepted request will plot
+  function checkCoords() {
+    const ok = SheetParser.parseCoordinates(req.coords.value).points.length > 0;
+    req.coordsError.textContent = ok ? '' : 'Enter at least an x and y (z optional), e.g. 2631.41, 5893.86, -61';
+    req.coordsError.hidden = ok;
+    req.coords.setAttribute('aria-invalid', String(!ok));
+    return ok;
+  }
+
+  req.form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const nameInput = req.form.elements.name;
+    nameInput.setAttribute('aria-invalid', String(!nameInput.value.trim()));
+    if (!nameInput.value.trim()) {
+      setRequestStatus('Add a name for the location.', true);
+      return nameInput.focus();
+    }
+    if (!checkCoords()) {
+      setRequestStatus('Check the coordinates.', true);
+      return req.coords.focus();
+    }
+
+    req.submit.disabled = true;
+    setRequestStatus(req.shots.length ? 'Preparing screenshots…' : 'Sending…');
+    try {
+      const data = new FormData(req.form);
+      for (let i = 1; i <= MAX_SHOTS; i++) data.delete(`screenshot${i}`);
+      const files = await Promise.all(req.shots.map((s) => shrinkImage(s.file)));
+      const total = files.reduce((n, f) => n + f.size, 0);
+      if (total > MAX_UPLOAD_BYTES) throw new Error('too-big');
+      files.forEach((f, i) => data.append(`screenshot${i + 1}`, f, f.name));
+      setRequestStatus('Sending…');
+      // No Content-Type header: the browser sets the multipart boundary itself
+      const res = await fetch('/', { method: 'POST', body: data });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      req.form.hidden = true;
+      req.done.hidden = false;
+    } catch (err) {
+      console.warn('Request failed:', err);
+      const local = location.protocol === 'file:' || /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+      setRequestStatus(
+        err.message === 'too-big'
+          ? 'Those screenshots are too large together. Remove one or two.'
+          : local
+            ? 'Requests can only be sent from the live (Netlify) site.'
+            : 'Could not send the request. Please try again.',
+        true
+      );
+    } finally {
+      req.submit.disabled = false;
+    }
+  });
+
+  req.coords.addEventListener('blur', () => req.coords.value.trim() && checkCoords());
+  req.picker.addEventListener('change', () => {
+    addShots(req.picker.files);
+    req.picker.value = '';
+  });
+  req.drop.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    req.drop.classList.add('is-over');
+  });
+  req.drop.addEventListener('dragleave', () => req.drop.classList.remove('is-over'));
+  req.drop.addEventListener('drop', (e) => {
+    e.preventDefault();
+    req.drop.classList.remove('is-over');
+    addShots(e.dataTransfer.files);
+  });
+  req.dialog.addEventListener('click', (e) => {
+    const action = e.target.closest('[data-request]')?.dataset.request;
+    if (action === 'close') req.dialog.close();
+    if (action === 'again') {
+      resetRequest();
+      req.form.elements.name.focus();
+    }
+  });
+  req.dialog.addEventListener('close', () => {
+    if (!req.done.hidden) resetRequest(); // keep a half-filled form, clear a sent one
+  });
 
   /* ================= Controls ================= */
   for (const [key, f] of Object.entries(FORMATS)) els.format.append(h('option', { value: key, title: f.label }, f.short || f.label));
