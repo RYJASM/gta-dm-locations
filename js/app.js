@@ -382,15 +382,46 @@
   // Google serves sheet images with Cross-Origin-Resource-Policy: same-site, which
   // blocks plain <img> embeds; a CORS-mode request (crossorigin) is allowed through.
   const needsCors = (src) => /^https:\/\/(docs\.google\.com|[\w-]+\.googleusercontent\.com)\//.test(src);
-  function image(im, attrs) {
-    const el = h('img', { crossorigin: needsCors(im.thumb) ? 'anonymous' : null, src: im.thumb, ...attrs });
-    if (im.local) el.addEventListener('error', () => useLocal(el, im.local), { once: true });
+  function image(im, attrs, onGiveUp) {
+    const el = h('img', attrs);
+    loadImage(el, im, 'thumb', onGiveUp);
     return el;
   }
-  function useLocal(el, src) {
-    el.removeAttribute('crossorigin');
-    el.src = src;
+
+  // Sheet image links are signed and expire after a few hours, so a tab left open
+  // ends up holding dead links (403) — which is why a page refresh "fixed" them.
+  // On failure: refresh the links from the sheet (in place, nothing re-renders)
+  // and retry; if that fails too, use the snapshot copy; only then give up.
+  // `key` is 'thumb' or 'full'.
+  function loadImage(el, im, key = 'thumb', onGiveUp) {
+    const token = (el._loadToken = {}); // a newer load on this element wins
+    let step = 0;
+    const set = (src) => {
+      if (needsCors(src)) el.crossOrigin = 'anonymous';
+      else el.removeAttribute('crossorigin');
+      el.src = src;
+    };
+    el.onerror = async () => {
+      if (el._loadToken !== token) return;
+      if (step === 0 && needsCors(im[key])) {
+        step = 1;
+        const failed = im[key];
+        await refreshImageLinks();
+        if (el._loadToken !== token || !el.isConnected) return;
+        // Unchanged link means it wasn't expiry (e.g. Google rate-limiting): wait, retry once
+        if (im[key] === failed) await sleep(1500);
+        if (el._loadToken === token) set(im[key]);
+        return;
+      }
+      if (step < 2 && im.local) {
+        step = 2;
+        return set(im.local);
+      }
+      onGiveUp?.();
+    };
+    set(im[key]);
   }
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
   function formatPoint(p) {
     return axes(p).join(', ');
@@ -451,11 +482,7 @@
     const media = h('div', { class: 'media' }, stage);
 
     const photo = ({ im, i }) => {
-      const img = image(im, { alt: entry.title, decoding: 'async' });
-      img.addEventListener('error', () => {
-        if (im.local && !img.src.endsWith(im.local)) useLocal(img, im.local);
-        else media.classList.add('is-broken');
-      });
+      const img = image(im, { alt: entry.title, decoding: 'async' }, () => media.classList.add('is-broken'));
       img.addEventListener('load', () => media.classList.remove('is-broken'));
       return h('button', { class: 'media-open', type: 'button', 'aria-label': 'View image full size', onclick: () => openLightbox(entry, i) },
         img,
@@ -466,7 +493,7 @@
     // A thumbnail + play button; the player itself only loads on click, so opening
     // a card stays fast and nothing from YouTube/Twitch loads until asked for
     const videoPoster = ({ video }) => {
-      const poster = video.thumb || entry.images[0]?.thumb;
+      const poster = video.thumb ? { thumb: video.thumb } : entry.images[0];
       return h('button', {
         class: `media-play media-play--${video.kind.toLowerCase()}`,
         type: 'button',
@@ -486,7 +513,7 @@
           }));
         },
       },
-        poster ? image({ thumb: poster }, { alt: '', decoding: 'async' }) : null,
+        poster ? image(poster, { alt: '', decoding: 'async' }) : null,
         h('span', { class: 'media-play-btn' }, icon('play')),
         h('span', { class: 'media-play-label' }, icon('play'), video.kind)
       );
@@ -679,13 +706,7 @@
     els.lightbox.classList.toggle('is-single', images.length < 2);
     els.lightbox.classList.add('is-loading');
     els.lightboxImg.onload = () => els.lightbox.classList.remove('is-loading');
-    els.lightboxImg.onerror = () => {
-      if (im.local && !els.lightboxImg.src.endsWith(im.local)) useLocal(els.lightboxImg, im.local);
-      else els.lightbox.classList.remove('is-loading');
-    };
-    if (needsCors(im.full)) els.lightboxImg.crossOrigin = 'anonymous';
-    else els.lightboxImg.removeAttribute('crossorigin');
-    els.lightboxImg.src = im.full;
+    loadImage(els.lightboxImg, im, 'full', () => els.lightbox.classList.remove('is-loading'));
     els.lightboxImg.alt = entry.title;
     els.lightboxCaption.textContent = `${entry.title}${images.length > 1 ? ` — ${index + 1} / ${images.length}` : ''}`;
   }
@@ -918,8 +939,13 @@
   function snapshotKey(e) {
     return `${e.dlc}|${e.notes}|${e.coordsText}`;
   }
+  // Finds an entry's saved copy: by id (built from the Name, so it survives edits to
+  // the notes or reordering), else by its content for unnamed rows
   function snapshotIndex() {
-    return new Map((window.SNAPSHOT?.entries || []).map((e) => [snapshotKey(e), e]));
+    const list = window.SNAPSHOT?.entries || [];
+    const byId = new Map(list.map((e) => [e.id, e]));
+    const byKey = new Map(list.map((e) => [snapshotKey(e), e]));
+    return { get: (e) => byId.get(e.id) || byKey.get(snapshotKey(e)) };
   }
 
   async function fetchLive() {
@@ -931,10 +957,10 @@
       // Remember the saved copy of each image in case Google's copy fails to load
       const snap = snapshotIndex();
       for (const e of entries) {
-        const s = snap.get(snapshotKey(e));
-        if (s && s.images.length === e.images.length) e.images.forEach((im, i) => (im.local = s.images[i].full));
-        const sn = s?.noteImages || [];
-        if (sn.length === (e.noteImages || []).length) e.noteImages.forEach((im, i) => (im.local = sn[i].full));
+        const s = snap.get(e);
+        if (!s) continue;
+        e.images.forEach((im, i) => s.images[i] && (im.local = s.images[i].full));
+        (e.noteImages || []).forEach((im, i) => s.noteImages?.[i] && (im.local = s.noteImages[i].full));
       }
       return { entries, mode: 'live' };
     } catch (htmlErr) {
@@ -944,12 +970,50 @@
       const entries = SheetParser.fromCsv(await res.text());
       const snap = snapshotIndex();
       for (const e of entries) {
-        const s = snap.get(snapshotKey(e));
+        const s = snap.get(e);
         if (s) Object.assign(e, { images: s.images, noteImages: s.noteImages || [], imageLinks: s.imageLinks, videoLinks: s.videoLinks });
       }
       return { entries, mode: 'live-csv' };
     }
   }
+
+  // Re-reads the sheet only to swap in newly signed image links, updating the
+  // existing entries in place so open cards and the list don't re-render.
+  let linksFetchedAt = 0;
+  let linksRefreshing = null;
+  function refreshImageLinks() {
+    if (linksRefreshing) return linksRefreshing;
+    if (Date.now() - linksFetchedAt < 60 * 1000) return Promise.resolve(); // already fresh
+    linksRefreshing = fetch(SheetParser.URLS.html, { cache: 'no-store' })
+      .then((res) => (res.ok ? res.text() : Promise.reject(new Error(`HTTP ${res.status}`))))
+      .then((html) => {
+        const fresh = new Map(SheetParser.fromHtml(html).map((e) => [e.id, e]));
+        for (const e of state.entries) {
+          const f = fresh.get(e.id);
+          if (!f) continue;
+          swapLinks(e.images, f.images);
+          swapLinks(e.noteImages || [], f.noteImages || []);
+        }
+        linksFetchedAt = Date.now();
+      })
+      .catch((err) => console.warn('Could not refresh image links:', err))
+      .finally(() => (linksRefreshing = null));
+    return linksRefreshing;
+  }
+  function swapLinks(current, fresh) {
+    current.forEach((im, i) => {
+      if (fresh[i]) Object.assign(im, { thumb: fresh[i].thumb, full: fresh[i].full });
+    });
+  }
+
+  // Refresh before links go stale: every so often while visible, and on returning
+  // to a tab that sat in the background
+  const LINK_MAX_AGE = 20 * 60 * 1000;
+  function keepLinksFresh() {
+    if (state.mode === 'live' && document.visibilityState === 'visible' && Date.now() - linksFetchedAt > LINK_MAX_AGE) refreshImageLinks();
+  }
+  setInterval(keepLinksFresh, 5 * 60 * 1000);
+  document.addEventListener('visibilitychange', keepLinksFresh);
 
   let loading = false;
   async function loadLive() {
@@ -962,6 +1026,7 @@
       const { entries, mode } = await fetchLive();
       state.mode = mode;
       state.loadedAt = new Date();
+      linksFetchedAt = Date.now();
       state.error = null;
       setEntries(entries);
     } catch (err) {
