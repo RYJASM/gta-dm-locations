@@ -16,7 +16,7 @@
 
   /* ================= Categories ================= */
   const GROUPS = [
-    { key: 'home', label: 'Homes & Hotels', color: '#22c55e', match: /house|home|apartment|hotel|motel/i },
+    { key: 'home', label: 'Homes & Hotels', color: '#22c55e', match: /\b(house|home|apartment|hotel|motel)/i }, // \b: not the "house" in "warehouse"
     { key: 'garage', label: 'Garages & Mechanics', color: '#3b82f6', match: /garage|loading|mechanic/i },
     { key: 'business', label: 'Business & Office', color: '#a855f7', match: /business|office|government/i },
     { key: 'club', label: 'Clubs & Casino', color: '#ef4444', match: /club|casino/i },
@@ -28,9 +28,15 @@
   ];
   const OTHER = GROUPS[GROUPS.length - 1];
 
-  function groupOf(category) {
-    const first = category.split('/')[0] || '';
-    return GROUPS.find((g) => g.match.test(first)) || GROUPS.find((g) => g.match.test(category)) || OTHER;
+  // Each of a row's categories maps to a group; the first decides the pin colour, and
+  // the row shows under every matching filter chip. Rows matching none are "Other".
+  function groupsOf(categories) {
+    const found = [];
+    for (const c of categories) {
+      const g = GROUPS.find((gr) => gr.match.test(c));
+      if (g && !found.includes(g)) found.push(g);
+    }
+    return found.length ? found : [OTHER];
   }
 
   const STATUS = {
@@ -726,7 +732,7 @@
 
   /* ================= Filtering + directory ================= */
   function matches(entry) {
-    if (state.groups.size && !state.groups.has(entry.group.key)) return false;
+    if (state.groups.size && !entry.groups.some((g) => state.groups.has(g.key))) return false;
     if (state.confirmedOnly && entry.confirmed.status !== 'yes') return false;
     if (!state.query) return true;
     return state.query.split(/\s+/).every((t) => entry.haystack.includes(t));
@@ -745,7 +751,7 @@
 
   function renderChips() {
     const counts = new Map();
-    for (const e of state.entries) counts.set(e.group.key, (counts.get(e.group.key) || 0) + 1);
+    for (const e of state.entries) for (const g of e.groups) counts.set(g.key, (counts.get(g.key) || 0) + 1);
     const chips = [
       h('button', {
         class: `chip${state.groups.size ? '' : ' is-on'}`,
@@ -875,8 +881,9 @@
   /* ================= Loading ================= */
   function prepare(entries) {
     for (const e of entries) {
-      e.group = groupOf(e.category);
-      e.haystack = [e.title, e.notes, e.dlc, e.release, e.category, e.group.label, e.coordsText, e.confirmed.text, e.confirmed.status === 'yes' ? 'confirmed nopixel' : '']
+      e.groups = groupsOf(e.categories || e.category.split(/\s*,\s*/));
+      e.group = e.groups[0];
+      e.haystack = [e.title, e.notes, e.dlc, e.release, e.category, ...e.groups.map((g) => g.label), e.coordsText, e.confirmed.text, e.confirmed.status === 'yes' ? 'confirmed nopixel' : '']
         .join(' ')
         .toLowerCase();
     }

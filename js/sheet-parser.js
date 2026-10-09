@@ -302,13 +302,17 @@
       for (const f of floating) if (imageCols.includes(f.col)) images.push(imageFromUrl(f.src));
       const noteImages = floating.filter((f) => !imageCols.includes(f.col)).map(sized);
 
-      const category = get('category').text;
+      // Several categories are comma-separated ("Business, Club"); "/" stays part of a
+      // single category's name ("House/Apartment")
+      const categories = get('category').text.split(',').map((c) => c.trim()).filter(Boolean);
+      const category = categories.join(', ');
       entries.push({
         id: `row${rowNum}`,
         row: rowNum,
         dlc: get('dlc').text,
         release: get('release').text,
         category,
+        categories,
         // The Name column is the title; rows not yet named fall back to the notes' first line
         title: get('name').text.replace(/\s+/g, ' ') || deriveTitle(notes.text, category),
         notes: notes.text,
