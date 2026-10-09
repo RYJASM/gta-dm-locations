@@ -73,6 +73,7 @@
     format: store.get('format') in FORMATS ? store.get('format') : 'comma',
     markers: new Map(), // "rowN:i" -> marker
     active: null, // { id, i }
+    opening: null, // { id, i } while the map is still flying to a pin
   };
 
   const $ = (id) => document.getElementById(id);
@@ -281,9 +282,22 @@
   }
 
   function openPoint(entry, i, { fly = false } = {}) {
-    const marker = state.markers.get(`${entry.id}:${i}`);
+    const key = `${entry.id}:${i}`;
+    const marker = state.markers.get(key);
     if (!marker) return;
+    state.opening = { id: entry.id, i };
     revealMarker(marker, fly ? 6 : 0, () => {
+      // Something else was opened while the map was moving
+      if (state.opening?.id !== entry.id || state.opening.i !== i) return;
+      // The live sheet replaced the snapshot mid-flight (e.g. a #row3 link on page
+      // load), so this pin is gone: open the same location's new pin instead.
+      if (state.markers.get(key) !== marker) {
+        const fresh = state.byId.get(entry.id);
+        if (fresh) openPoint(fresh, Math.min(i, fresh.points.length - 1));
+        else state.opening = null;
+        return;
+      }
+      state.opening = null;
       marker.openPopup();
       setActive(entry.id, i);
     });
@@ -538,6 +552,7 @@
 
   /* ================= Modal (entries without coordinates) ================= */
   function openModal(entry) {
+    state.opening = null; // don't let a pin that's still being flown to pop up over this
     els.modal.replaceChildren(
       h('button', { class: 'lb-btn modal-close', type: 'button', 'aria-label': 'Close', onclick: () => els.modal.close() }, icon('close')),
       buildCard(entry, -1, 'modal')
