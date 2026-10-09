@@ -27,6 +27,7 @@
   --faint: #6c7486;
   --accent: #ffd34d;
   --accent-ink: #1d1600;
+  --chip-ink: #0b0d12; /* text on selected (colour-filled) filter chips */
   --ok: #4ade80;
   --warn: #fbbf24;
   --bad: #f87171;
@@ -115,14 +116,19 @@ a { color: var(--accent); }
   border: 1px solid var(--line);
   border-radius: 999px;
   font-size: 12.5px;
+  font-weight: 500; /* same weight on and off, so selecting a chip doesn't change its width */
   color: var(--muted);
   transition: background .15s, border-color .15s, color .15s;
 }
 .chip:hover { border-color: var(--line-2); color: var(--text); }
-.chip.is-on { background: var(--panel-3); border-color: var(--c, var(--accent)); color: var(--text); }
-.chip:first-child.is-on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+/* Selected: filled with the group colour (accent for "All") and dark text. Every
+   group colour keeps >= 4.5:1 contrast with --chip-ink; check new colours too. */
+.chip.is-on { background: var(--c, var(--accent)); border-color: var(--c, var(--accent)); color: var(--chip-ink); }
+.chip.is-on:hover { filter: brightness(1.08); }
 .chip-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+.chip.is-on .chip-dot { background: currentColor; opacity: .55; }
 .chip-n { color: var(--faint); font-variant-numeric: tabular-nums; font-size: 11.5px; }
+.chip.is-on .chip-n { color: inherit; opacity: .7; }
 
 .control-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); cursor: pointer; user-select: none; }

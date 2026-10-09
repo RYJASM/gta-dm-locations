@@ -15,6 +15,8 @@
   const TILE_MAX_ZOOM = window.TILE_MAX_ZOOM || 8;
 
   /* ================= Categories ================= */
+  // Colours double as the fill of a selected filter chip under dark text (--chip-ink),
+  // so a new colour needs >= 4.5:1 contrast with #0b0d12 (the darkest here, #a855f7, is 4.9).
   const GROUPS = [
     { key: 'home', label: 'Homes & Hotels', color: '#22c55e', match: /\b(house|home|apartment|hotel|motel)/i }, // \b: not the "house" in "warehouse"
     { key: 'garage', label: 'Garages & Mechanics', color: '#3b82f6', match: /garage|loading|mechanic/i },
