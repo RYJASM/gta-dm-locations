@@ -66,10 +66,16 @@
     return m ? decodeURIComponent(m[1]) : url;
   }
 
+  // A link pasted twice into one hyperlink ("…?t=08h37m48shttps://…") becomes
+  // two URLs; duplicates are then dropped by unique().
+  function splitGluedUrls(url) {
+    return url.split(/(?=https?:\/\/)/).filter(Boolean);
+  }
+
   function parseCell(html) {
     const images = [...html.matchAll(/<img\b[^>]*?\ssrc="([^"]+)"/gi)].map((m) => decodeEntities(m[1]));
-    const links = [...html.matchAll(/<a\b[^>]*?\shref="([^"]+)"/gi)].map((m) =>
-      unwrapGoogleUrl(decodeEntities(m[1]))
+    const links = [...html.matchAll(/<a\b[^>]*?\shref="([^"]+)"/gi)].flatMap((m) =>
+      splitGluedUrls(unwrapGoogleUrl(decodeEntities(m[1])))
     );
     return { text: stripTags(html), links: unique(links), images };
   }
@@ -110,7 +116,26 @@
       row.num = Number(id[1]) + 1;
       rows.push(row);
     }
+    attachFloatingImages(html, rows);
     return rows;
+  }
+
+  // Images placed *over* cells (Insert → Image → over cells) aren't inside any
+  // <td>. Google renders them after the table and positions them with
+  // posObj(sheet, id, row, col, x, y); attach each one to the row it sits on.
+  function attachFloatingImages(html, rows) {
+    const objects = new Map();
+    const overlay = /<div\s+id=['"](embed_\d+)['"][^>]*waffle-embedded-object-overlay[^>]*>\s*<img\b([^>]*)>/gi;
+    for (const m of html.matchAll(overlay)) {
+      const attr = (name) => m[2].match(new RegExp(`\\b${name}=['"]([^'"]+)['"]`))?.[1];
+      const src = attr('src');
+      if (src) objects.set(m[1], { src: decodeEntities(src), width: Number(attr('width')) || null, height: Number(attr('height')) || null });
+    }
+    for (const m of html.matchAll(/posObj\(\s*['"][^'"]*['"]\s*,\s*['"](embed_\d+)['"]\s*,\s*(\d+)\s*,\s*(\d+)/g)) {
+      const obj = objects.get(m[1]);
+      const row = rows.find((r) => r.num === Number(m[2]) + 1);
+      if (obj && row) (row.floating ||= []).push({ ...obj, col: Number(m[3]) });
+    }
   }
 
   /* ---------- CSV (fallback: no images, no hidden links) ---------- */
@@ -133,7 +158,7 @@
     }
     if (field || row.length) { row.push(field); rows.push(row); }
     return rows.map((r, i) => {
-      const cells = r.map((t) => ({ text: t.trim(), links: unique(t.match(/https?:\/\/\S+/g) || []), images: [] }));
+      const cells = r.map((t) => ({ text: t.trim(), links: unique((t.match(/https?:\/\/\S+/g) || []).flatMap(splitGluedUrls)), images: [] }));
       cells.num = i + 1; // quoted line breaks stay inside a field, so CSV rows = sheet rows
       return cells;
     });
@@ -268,6 +293,13 @@
       const images = get('image').images.map(imageFromUrl);
       for (const url of imageLinks) if (IMAGE_EXT.test(url)) images.push(imageFromUrl(url));
 
+      // Floating images over the Image column join the photos; anywhere else they
+      // illustrate the notes (e.g. "…press this button:") and are shown inline there.
+      const floating = row.floating || [];
+      const sized = (f) => ({ ...imageFromUrl(f.src), width: f.width, height: f.height });
+      for (const f of floating) if (f.col === col.image) images.push(imageFromUrl(f.src));
+      const noteImages = floating.filter((f) => f.col !== col.image).map(sized);
+
       const category = get('category').text;
       entries.push({
         id: `row${rowNum}`,
@@ -282,6 +314,7 @@
         coordsNote: parsed.note,
         points: parsed.points,
         images: uniqueBy(images, (im) => im.full),
+        noteImages: uniqueBy(noteImages, (im) => im.full),
         imageLinks: imageLinks.filter((u) => !IMAGE_EXT.test(u)),
         videoLinks: get('videoLink').links,
         confirmed: {

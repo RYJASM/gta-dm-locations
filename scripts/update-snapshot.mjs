@@ -24,26 +24,33 @@ await mkdir(IMG_DIR, { recursive: true });
 const keep = new Set();
 let failed = 0;
 
-for (const entry of entries) {
+// Downloads each image and returns copies pointing at the local files
+// (keeping any extra fields such as width/height).
+async function saveImages(entry, images, prefix) {
   const local = [];
-  for (const [i, img] of entry.images.entries()) {
+  for (const [i, img] of images.entries()) {
     // 1600px-wide JPEG keeps the whole snapshot small
     const url = img.full.replace(/=w1920-rj-l88$/, '=w1600-rj-l82');
     try {
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const ext = EXT[res.headers.get('content-type')?.split(';')[0]] || 'jpg';
-      const name = `${entry.id}-${i + 1}.${ext}`;
+      const name = `${entry.id}-${prefix}${i + 1}.${ext}`;
       await writeFile(join(IMG_DIR, name), Buffer.from(await res.arrayBuffer()));
       keep.add(name);
-      local.push({ thumb: `assets/locations/${name}`, full: `assets/locations/${name}` });
+      local.push({ ...img, thumb: `assets/locations/${name}`, full: `assets/locations/${name}` });
     } catch (err) {
       failed++;
-      console.warn(`  ${entry.id} image ${i + 1}: ${err.message}`);
+      console.warn(`  ${entry.id} ${prefix || ''}image ${i + 1}: ${err.message}`);
       local.push(img);
     }
   }
-  entry.images = local;
+  return local;
+}
+
+for (const entry of entries) {
+  entry.images = await saveImages(entry, entry.images, '');
+  entry.noteImages = await saveImages(entry, entry.noteImages || [], 'note-');
   process.stdout.write('.');
 }
 

@@ -41,11 +41,12 @@
 
   /* ================= Copy formats ================= */
   const axes = (p) => (p.z == null ? [p.x, p.y] : [p.x, p.y, p.z]);
+  // `short` is the dropdown text (kept short so the sidebar row fits); `label` is shown in hints
   const FORMATS = {
     comma: { label: 'x, y, z', fmt: (p) => axes(p).join(', ') },
     space: { label: 'x y z', fmt: (p) => axes(p).join(' ') },
-    vector: { label: 'vector3(x, y, z)', fmt: (p) => `vector${axes(p).length}(${axes(p).join(', ')})` },
-    json: { label: '{"x":…,"y":…,"z":…}', fmt: (p) => JSON.stringify(p.z == null ? { x: p.x, y: p.y } : { x: p.x, y: p.y, z: p.z }) },
+    vector: { label: 'vector3(x, y, z)', short: 'vector3', fmt: (p) => `vector${axes(p).length}(${axes(p).join(', ')})` },
+    json: { label: '{"x":…,"y":…,"z":…}', short: 'JSON', fmt: (p) => JSON.stringify(p.z == null ? { x: p.x, y: p.y } : { x: p.x, y: p.y, z: p.z }) },
   };
 
   /* ================= State ================= */
@@ -326,7 +327,8 @@
   function linkify(text) {
     const frag = document.createDocumentFragment();
     let last = 0;
-    for (const m of text.matchAll(/https?:\/\/[^\s<>"]+/g)) {
+    // A URL ends where whitespace or another "http(s)://" starts (links pasted back to back)
+    for (const m of text.matchAll(/https?:\/\/(?:(?!https?:\/\/)[^\s<>"])+/g)) {
       frag.append(text.slice(last, m.index));
       const url = m[0].replace(/[).,]+$/, '');
       frag.append(h('a', { href: url, target: '_blank', rel: 'noopener noreferrer' }, prettyUrl(url)));
@@ -486,6 +488,7 @@
         coords,
         entry.points.length ? h('p', { class: 'card-hint' }, copyHint()) : null,
         showNotes && h('p', { class: 'card-notes' }, linkify(entry.notes)),
+        noteImages(entry),
         entry.coordsNote && h('p', { class: 'card-subnote' }, linkify(entry.coordsNote)),
         confirmedExtra && h('p', { class: 'card-subnote' }, h('strong', null, 'NoPixel: '), linkify(entry.confirmed.text)),
         linkRow.length > 0 &&
@@ -493,6 +496,27 @@
             linkRow.map((l) => h('a', { href: l.url, target: '_blank', rel: 'noopener noreferrer' }, icon(l.ico), l.label))
           ),
         h('p', { class: 'card-row' }, `Sheet row ${entry.row}`)
+      )
+    );
+  }
+
+  // Images floating over the notes in the sheet, shown right under the notes text.
+  // The sheet's own width/height reserve the space up front so the card doesn't
+  // jump (and the popup doesn't drift off screen) as they load.
+  function noteImages(entry) {
+    const list = entry.noteImages || [];
+    if (!list.length) return null;
+    return h(
+      'div',
+      { class: 'note-images' },
+      list.map((im, i) =>
+        h('button', {
+          class: 'note-image',
+          type: 'button',
+          'aria-label': 'View image from the notes full size',
+          style: im.width && im.height ? `aspect-ratio:${im.width} / ${im.height};max-width:${im.width}px` : null,
+          onclick: () => openLightbox(entry, i, list),
+        }, image(im, { alt: 'Image from the notes', loading: 'lazy', decoding: 'async' }))
       )
     );
   }
@@ -529,17 +553,19 @@
   });
 
   /* ================= Lightbox ================= */
-  const lb = { entry: null, index: 0 };
-  function openLightbox(entry, index) {
+  // `images` is either the entry's photos or the images shown inline in its notes
+  const lb = { entry: null, images: [], index: 0 };
+  function openLightbox(entry, index, images = entry.images) {
     lb.entry = entry;
+    lb.images = images;
     lb.index = index;
     showLightboxImage();
     if (!els.lightbox.open) els.lightbox.showModal();
   }
   function showLightboxImage() {
-    const { entry, index } = lb;
-    const im = entry.images[index];
-    els.lightbox.classList.toggle('is-single', entry.images.length < 2);
+    const { entry, images, index } = lb;
+    const im = images[index];
+    els.lightbox.classList.toggle('is-single', images.length < 2);
     els.lightbox.classList.add('is-loading');
     els.lightboxImg.onload = () => els.lightbox.classList.remove('is-loading');
     els.lightboxImg.onerror = () => {
@@ -550,11 +576,11 @@
     else els.lightboxImg.removeAttribute('crossorigin');
     els.lightboxImg.src = im.full;
     els.lightboxImg.alt = entry.title;
-    els.lightboxCaption.textContent = `${entry.title}${entry.images.length > 1 ? ` — ${index + 1} / ${entry.images.length}` : ''}`;
+    els.lightboxCaption.textContent = `${entry.title}${images.length > 1 ? ` — ${index + 1} / ${images.length}` : ''}`;
   }
   function stepLightbox(d) {
-    if (!lb.entry || lb.entry.images.length < 2) return;
-    lb.index = (lb.index + d + lb.entry.images.length) % lb.entry.images.length;
+    if (lb.images.length < 2) return;
+    lb.index = (lb.index + d + lb.images.length) % lb.images.length;
     showLightboxImage();
   }
   els.lightbox.addEventListener('click', (e) => {
@@ -791,6 +817,8 @@
       for (const e of entries) {
         const s = snap.get(snapshotKey(e));
         if (s && s.images.length === e.images.length) e.images.forEach((im, i) => (im.local = s.images[i].full));
+        const sn = s?.noteImages || [];
+        if (sn.length === (e.noteImages || []).length) e.noteImages.forEach((im, i) => (im.local = sn[i].full));
       }
       return { entries, mode: 'live' };
     } catch (htmlErr) {
@@ -801,7 +829,7 @@
       const snap = snapshotIndex();
       for (const e of entries) {
         const s = snap.get(snapshotKey(e));
-        if (s) Object.assign(e, { images: s.images, imageLinks: s.imageLinks, videoLinks: s.videoLinks });
+        if (s) Object.assign(e, { images: s.images, noteImages: s.noteImages || [], imageLinks: s.imageLinks, videoLinks: s.videoLinks });
       }
       return { entries, mode: 'live-csv' };
     }
@@ -841,7 +869,7 @@
   }
 
   /* ================= Controls ================= */
-  for (const [key, f] of Object.entries(FORMATS)) els.format.append(h('option', { value: key }, f.label));
+  for (const [key, f] of Object.entries(FORMATS)) els.format.append(h('option', { value: key, title: f.label }, f.short || f.label));
   els.format.value = state.format;
   els.format.addEventListener('change', () => {
     state.format = els.format.value;
