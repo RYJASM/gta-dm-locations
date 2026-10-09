@@ -18,7 +18,7 @@ An interactive GTA V map of the locations in the DM teleport Google Sheet. Click
 - **Directory:** press `/` to search by name, DLC, category, notes or coordinates. You can also filter by category chip or show only locations confirmed on NoPixel. Press Enter to open the first result.
 - **Copy as:** choose `x, y, z`, `x y z`, `vector3(x, y, z)` or JSON. Your choice is remembered.
 - **Hover the map** to see the game X/Y under your cursor. **Right-click** to copy that X/Y. There's no Z, so you'll need to adjust height in-game.
-- **Share a location:** the address bar updates to e.g. `#row103`, and opening that link opens the same pin.
+- **Share a location:** the address bar updates to a link built from the row's Name, e.g. `#kortz-center-heist-room`, or `#small-slim-garage/3` for location 3 of a multi-location row. Links keep working when rows are reordered in the sheet. Repeated names get `-2`, `-3`…, and rows without a Name use `#row12`. Older `#row83-3` style links still open by row number.
 - On phones, the directory is a slide-up drawer opened from the **Directory** button.
 
 ## Updating the offline copy

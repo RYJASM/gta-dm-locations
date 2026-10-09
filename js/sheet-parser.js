@@ -281,6 +281,7 @@
     if (!('coords' in col)) throw new Error('The sheet has no Coordinates column');
 
     const entries = [];
+    const usedIds = new Set();
     rows.slice(headerIndex + 1).forEach((row, i) => {
       const rowNum = row.num || headerIndex + i + 2;
       const get = (field) => row[col[field]] || { text: '', links: [], images: [] };
@@ -307,7 +308,7 @@
       const categories = get('category').text.split(',').map((c) => c.trim()).filter(Boolean);
       const category = categories.join(', ');
       entries.push({
-        id: `row${rowNum}`,
+        id: uniqueId(slugify(get('name').text) || `row${rowNum}`, usedIds),
         row: rowNum,
         dlc: get('dlc').text,
         release: get('release').text,
@@ -332,6 +333,28 @@
       });
     });
     return entries;
+  }
+
+  // "Kortz Center Heist Room" -> "kortz-center-heist-room". Used for the entry's id,
+  // which is also its shareable link (#kortz-center-heist-room) and the snapshot
+  // image file names, so both survive rows being reordered in the sheet.
+  function slugify(text) {
+    return text
+      .toLowerCase()
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/['’]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 60);
+  }
+
+  // Repeated names get -2, -3 … in sheet order
+  function uniqueId(base, used) {
+    let id = base;
+    for (let n = 2; used.has(id); n++) id = `${base}-${n}`;
+    used.add(id);
+    return id;
   }
 
   function uniqueBy(arr, key) {

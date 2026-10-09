@@ -252,7 +252,7 @@
       item.classList.add('is-active');
       item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
-    history.replaceState(null, '', `#${id}${i ? `-${i + 1}` : ''}`);
+    history.replaceState(null, '', `#${id}${i ? `/${i + 1}` : ''}`); // "/2": ids can end in -2 themselves
   }
 
   // Re-apply the active class when a pin re-enters the DOM after (un)clustering
@@ -965,11 +965,19 @@
     }
   }
 
+  // #kortz-center-heist-room or #office-towers/3 (location 3). Older links used the
+  // sheet row number (#row83-3); those still resolve by row.
   function openFromHash() {
-    const m = location.hash.match(/^#(row\d+)(?:-(\d+))?$/);
-    const entry = m && state.byId.get(m[1]);
+    const [id, loc] = decodeURIComponent(location.hash.slice(1)).split('/');
+    let entry = state.byId.get(id);
+    let n = loc;
+    const legacy = !entry && id.match(/^row(\d+)(?:-(\d+))?$/);
+    if (legacy) {
+      entry = state.entries.find((e) => e.row === Number(legacy[1]));
+      n = legacy[2];
+    }
     if (!entry) return;
-    const i = Math.min(Number(m[2] || 1) - 1, Math.max(entry.points.length - 1, 0));
+    const i = Math.min(Number(n || 1) - 1, Math.max(entry.points.length - 1, 0));
     entry.points.length ? openPoint(entry, i, { fly: true }) : openModal(entry);
   }
 
